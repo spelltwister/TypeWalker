@@ -65,6 +65,9 @@ namespace TypeWalker.Generators
             }
         }
 
+        public override string MethodStartFormat => String.Empty;
+        public override string MethodEndFormat => String.Empty;
+
         public override bool ExportsNonPublicMembers
         {
             get { return false; }

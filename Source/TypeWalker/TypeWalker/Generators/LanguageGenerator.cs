@@ -31,24 +31,42 @@ namespace TypeWalker.Generators
 
         public abstract string MemberEndFormat { get; }
 
+        public abstract string MethodStartFormat { get; }
+
+        public abstract string MethodEndFormat { get; }
+
         public abstract bool ExportsNonPublicMembers { get; }
 
-        public string Generate(IEnumerable<Type> startingTypes)
+        protected IDictionary<string, IList<Type>> GetTypesByNamespace(IEnumerable<Type> startingTypes)
         {
-            var types = new List<TypeEventArgs>();
+            IDictionary<string, IList<Type>> typesByNamespace = new Dictionary<string, IList<Type>>();
+
             var typeCollector = new Visitor();
-            typeCollector.TypeVisited += (sender, args) => { types.Add(args); };
+            string currentNamespace = null;
+            typeCollector.NameSpaceVisiting += (sender, args) =>
+            {
+                currentNamespace = args.NameSpaceName;
+                if (!typesByNamespace.ContainsKey(args.NameSpaceName))
+                {
+                    typesByNamespace[args.NameSpaceName] = new List<Type>();
+                }
+            };
+            typeCollector.TypeVisited += (sender, args) => { typesByNamespace[currentNamespace].Add(args.Type); };
             typeCollector.Visit(startingTypes, this.language);
 
-            types.Sort((t1, t2) => string.Compare(t1.FullTypeName, t2.FullTypeName, StringComparison.InvariantCultureIgnoreCase));
+            return typesByNamespace;
+        }
 
-            var allTypes = types.Select(t => t.Type).ToList();
-
+        protected string GenerateNamespaceTypes(string nameSpace, IList<Type> allTypes)
+        {
             var trace = new StringBuilder();
             var visitor = new Visitor();
 
-            visitor.NameSpaceVisiting += (sender, args) => { trace.AppendFormatObject(NamespaceStartFormat, args); };
-            visitor.NameSpaceVisited += (sender, args) => { trace.AppendFormatObject(NamespaceEndFormat, args); };
+            trace.AppendFormatObject(NamespaceStartFormat, new NameSpaceEventArgs()
+            {
+                Comment = nameSpace,
+                NameSpaceName = nameSpace
+            });
 
             visitor.TypeVisiting += (sender, args) => {
                 if (args.BaseTypeInfo != null)
@@ -63,7 +81,7 @@ namespace TypeWalker.Generators
             visitor.TypeVisited += (sender, args) => { trace.AppendFormatObject(TypeEndFormat, args); };
 
             Func<MemberEventArgs, bool> include = args =>
-                (this.ExportsNonPublicMembers || args.IsPublic) &&  args.IsOwnProperty && !args.IgnoredByGenerators.Contains(this.id);
+                (this.ExportsNonPublicMembers || args.IsPublic) && args.IsOwnProperty && !args.IgnoredByGenerators.Contains(this.id);
 
             visitor.MemberVisiting += (sender, args) => {
                 if (include(args))
@@ -77,14 +95,43 @@ namespace TypeWalker.Generators
                 if (include(args))
                 {
                     trace.AppendFormatObject(MemberEndFormat, args);
-                };
+                }
+            };
+
+            visitor.MethodVisiting += (sender, args) =>
+            {
+                if ((this.ExportsNonPublicMembers || args.MethodInfo.IsPublic) && args.IsOwnMethod)
+                {
+                    trace.AppendFormatObject(MethodStartFormat, args);
+                }
+            };
+
+            visitor.MethodVisited += (sender, args) =>
+            {
+                if ((this.ExportsNonPublicMembers || args.MethodInfo.IsPublic) && args.IsOwnMethod)
+                {
+                    trace.AppendFormatObject(MethodEndFormat, args);
+                }
             };
 
             visitor.Visit(allTypes, this.language);
 
-            var languageOutput = trace.ToString().Trim();
+            trace.AppendFormatObject(NamespaceEndFormat, new NameSpaceEventArgs() { Comment = nameSpace, NameSpaceName = nameSpace });
 
-            return languageOutput;
+            return trace.ToString().Trim();
+        }
+
+        public string Generate(IEnumerable<Type> startingTypes)
+        {
+            StringBuilder sb = new StringBuilder();
+
+            var typesByNamespace = GetTypesByNamespace(startingTypes);
+            foreach (var typeName in typesByNamespace)
+            {
+                sb.AppendLine(GenerateNamespaceTypes(typeName.Key, typeName.Value));
+            }
+
+            return sb.ToString();
         }
     }
 }

@@ -75,8 +75,7 @@ namespace TypeWalker.Generators
             get
             {
                 return
-            "        {MemberName}(): {MemberTypeFullName};" + Environment.NewLine +
-            "        {MemberName}(value: {MemberTypeFullName}): void;" + Environment.NewLine;
+                    "        {MemberName}: KnockoutObservable<{MemberTypeFullName}>;" + Environment.NewLine;
             }
         }
 
@@ -87,6 +86,10 @@ namespace TypeWalker.Generators
                 return string.Empty; 
             }
         }
+
+        public override string MethodStartFormat => "        {MethodName}(): void;";
+
+        public override string MethodEndFormat => string.Empty;
 
         public override bool ExportsNonPublicMembers
         {

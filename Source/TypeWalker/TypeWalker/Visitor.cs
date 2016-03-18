@@ -153,6 +153,16 @@ namespace TypeWalker
             return args; 
         }
 
+        private MethodEventArgs GetMethodEventArgs(MethodInfo method, Type visitingType)
+        {
+            return new MethodEventArgs()
+            {
+                MethodName = method.Name,
+                MethodInfo = method,
+                IsOwnMethod = method.DeclaringType == visitingType && !method.IsSpecialName /* property getter / setter */
+            };
+        }
+
         private void VisitProperty(PropertyInfo member, Type visitingType)
         {
             var args = GetMemberEventArgs(member, member.PropertyType, visitingType);
@@ -208,13 +218,19 @@ namespace TypeWalker
 
         private void VisitMethod(MethodInfo method, Type visitingType)
         {
-            var args = new MethodEventArgs() 
-            {
-                MethodName = method.Name 
-            };
+            var args = GetMethodEventArgs(method, visitingType);
 
             if (MethodVisiting != null) { MethodVisiting(this, args); }
-            // pretty sure I'll have to do something here for the controller methods input and output types
+            
+            // look at the return type
+            RegisterType(method.ReturnType);
+
+            // and all input types
+            foreach (var inputType in method.GetParameters())
+            {
+                RegisterType(inputType.ParameterType);
+            }
+
             if (MethodVisited != null) { MethodVisited(this, args); }
         }
 
