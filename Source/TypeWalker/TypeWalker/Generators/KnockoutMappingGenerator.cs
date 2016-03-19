@@ -73,16 +73,16 @@ namespace TypeWalker.Generators
         {
             var typeInfo = TSLang.GetTypeInfo(t);
             
-            StringBuilder sb = new StringBuilder($"export type {typeInfo.Name} = {{");
+            StringBuilder sb = new StringBuilder($"    export type {typeInfo.Name} = {{");
             sb.AppendLine();
 
             // types do not support inheritance so much list all properites from base types onto this type
             foreach (var property in t.GetProperties())
             {
-                sb.AppendLine($"    {property.Name}: {TSLang.GetTypeInfo(property.PropertyType).Name};");
+                sb.AppendLine($"        {property.Name}: {TSLang.GetTypeInfo(property.PropertyType).Name};");
             }
 
-            sb.Append("};");
+            sb.Append("    };");
             return sb.ToString();
         }
 
@@ -90,19 +90,19 @@ namespace TypeWalker.Generators
         {
             var typeInfo = TSLang.GetTypeInfo(t);
 
-            StringBuilder sb = new StringBuilder($"export interface I{typeInfo.Name}");
+            StringBuilder sb = new StringBuilder($"    export interface I{typeInfo.Name} ");
             if (t.BaseType != null)
             {
-                sb.Append($" extends I{TSLang.GetTypeInfo(t.BaseType).Name} ");
+                sb.Append($"extends I{TSLang.GetTypeInfo(t.BaseType).Name} ");
             }
             sb.AppendLine("{");
 
             foreach (var property in t.GetProperties().Where(x => x.DeclaringType == t))
             {
-                sb.AppendLine($"    {property.Name}: KnockoutObservable<{TSLang.GetTypeInfo(property.PropertyType).Name}>;");
+                sb.AppendLine($"        {property.Name}: KnockoutObservable<{TSLang.GetTypeInfo(property.PropertyType).Name}>;");
             }
 
-            sb.Append("};");
+            sb.Append("    };");
             return sb.ToString();
         }
 
@@ -110,29 +110,73 @@ namespace TypeWalker.Generators
         {
             var typeInfo = TSLang.GetTypeInfo(t);
 
-            StringBuilder sb = new StringBuilder($"export class {typeInfo.Name}Edit implements I{typeInfo.Name} {{");
+            StringBuilder sb = new StringBuilder($"    export class {typeInfo.Name}Edit implements I{typeInfo.Name} {{");
             sb.AppendLine();
 
             foreach (var property in t.GetProperties())
             {
-                sb.AppendLine($"    {property.Name}: KnockoutObservable<{TSLang.GetTypeInfo(property.PropertyType).Name}>;");
+                if (property.PropertyType.IsGenericCollectionType())
+                {
+                    var collectionName = TSLang.GetTypeInfo(property.PropertyType).Name;
+                    collectionName = collectionName.Substring(0, collectionName.Length - 2);
+
+                    Type collectionType;
+                    if (property.PropertyType.TryGetGenericCollectionType(out collectionType) &&
+                        collectionType.IsExportableType())
+                    {
+                        sb.AppendLine($"        {property.Name}: KnockoutObservableArray<{collectionName}Edit>;");
+                    }
+                    else
+                    {
+                        sb.AppendLine($"        {property.Name}: KnockoutObservableArray<{collectionName}>;");
+                    }
+                }
+                else
+                {
+                    if (property.PropertyType.IsExportableType())
+                    {
+                        sb.AppendLine($"        {property.Name}: {TSLang.GetTypeInfo(property.PropertyType).Name}Edit;");
+                    }
+                    else
+                    {
+                        sb.AppendLine($"        {property.Name}: KnockoutObservable<{TSLang.GetTypeInfo(property.PropertyType).Name}>;");
+                    }
+                }
             }
 
-            sb.AppendLine($"    constructor(initial?:{typeInfo.Name}) {{");
+            sb.AppendLine($"        constructor(initial?:{typeInfo.Name}) {{");
             foreach (var property in t.GetProperties())
             {
                 if (property.PropertyType.IsGenericCollectionType())
                 {
-                    sb.AppendLine($"        this.{property.Name} = ko.observableArray(initial && initial.{property.Name})");
+                    Type collectionType;
+                    if (property.PropertyType.TryGetGenericCollectionType(out collectionType) &&
+                        collectionType.IsExportableType())
+                    {
+                        var collectionName = TSLang.GetTypeInfo(property.PropertyType).Name;
+                        collectionName = collectionName.Substring(0, collectionName.Length - 2);
+                        sb.AppendLine($"            this.{property.Name} = ko.observableArray(initial && initial.{property.Name} && $.map(initial.{property.Name}, (item) => new {collectionName}Edit(item)));");
+                    }
+                    else
+                    {
+                        sb.AppendLine($"            this.{property.Name} = ko.observableArray(initial && initial.{property.Name});");
+                    }
                 }
                 else
                 {
-                    sb.AppendLine($"        this.{property.Name} = ko.observable(initial && initial.{property.Name});");
+                    if (property.PropertyType.IsExportableType())
+                    {
+                        sb.AppendLine($"            this.{property.Name} = new {TSLang.GetTypeInfo(property.PropertyType).Name}Edit(initial && initial.{property.Name});");
+                    }
+                    else
+                    { 
+                        sb.AppendLine($"            this.{property.Name} = ko.observable(initial && initial.{property.Name});");
+                    }
                 }
             }
-            sb.AppendLine("    }");
+            sb.AppendLine("        }");
 
-            sb.Append("};");
+            sb.Append("    };");
             return sb.ToString();
         }
 
@@ -151,21 +195,21 @@ namespace TypeWalker.Generators
         {
             var typeInfo = TSLang.GetTypeInfo(t);
 
-            StringBuilder sb = new StringBuilder($"export interface I{typeInfo.Name}");
+            StringBuilder sb = new StringBuilder($"    export interface I{typeInfo.Name} ");
             if (t.BaseType != null)
             {
-                sb.Append($" extends I{TSLang.GetTypeInfo(t.BaseType).Name} ");
+                sb.Append($"extends I{TSLang.GetTypeInfo(t.BaseType).Name} ");
             }
             sb.AppendLine("{");
 
             foreach (var method in t.GetMethods().Where(x => x.DeclaringType == t && !x.IsSpecialName /*Property getter/setter*/))
             {
                 // TODO: when there are multiple parameters, need to create a version that has a parameter object as the only parameter
-                sb.AppendLine($"    {method.Name}({string.Join(", ", method.GetParameters().Select(x => $"{x.Name}: {TSLang.GetTypeInfo(x.ParameterType).Name}"))}) : JQueryPromise<{TSLang.GetTypeInfo(method.ReturnType).Name}>;");
+                sb.AppendLine($"        {method.Name}({string.Join(", ", method.GetParameters().Select(x => $"{x.Name}: {TSLang.GetTypeInfo(x.ParameterType).Name}"))}) : JQueryPromise<{TSLang.GetTypeInfo(method.ReturnType).Name}>;");
                 sb.AppendLine();
             }
 
-            sb.Append("};");
+            sb.Append("    };");
             return sb.ToString();
         }
 
@@ -174,30 +218,30 @@ namespace TypeWalker.Generators
             var typeInfo = TSLang.GetTypeInfo(t);
             
             // TODO: inheritance
-            StringBuilder sb = new StringBuilder($"export class {typeInfo.Name} implements I{typeInfo.Name} {{");
+            StringBuilder sb = new StringBuilder($"    export class {typeInfo.Name} implements I{typeInfo.Name} {{");
             sb.AppendLine();
 
-            sb.AppendLine("    private urlBase: string;");
-            sb.AppendLine("    constructor(urlBase: string) {");
-            sb.AppendLine("        this.urlBase = urlBase;");
-            sb.AppendLine("    }");
+            sb.AppendLine("        private urlBase: string;");
+            sb.AppendLine("        constructor(urlBase: string) {");
+            sb.AppendLine("            this.urlBase = urlBase;");
+            sb.AppendLine("        }");
             sb.AppendLine();
 
             foreach (var method in t.GetMethods().Where(x => x.DeclaringType == t && !x.IsSpecialName))
             {
                 // TODO: when there are multiple parameters, need to create a version that has a parameter object as the only parameter
-                sb.AppendLine($"    {method.Name}({string.Join(", ", method.GetParameters().Select(x => $"{x.Name}: {TSLang.GetTypeInfo(x.ParameterType).Name}"))}) : JQueryPromise<{TSLang.GetTypeInfo(method.ReturnType).Name}> {{");
+                sb.AppendLine($"        {method.Name}({string.Join(", ", method.GetParameters().Select(x => $"{x.Name}: {TSLang.GetTypeInfo(x.ParameterType).Name}"))}) : JQueryPromise<{TSLang.GetTypeInfo(method.ReturnType).Name}> {{");
                 sb.AppendLine();
 
-                sb.AppendLine($"        return $.getJSON(this.urlBase + '/api/');");
+                sb.AppendLine($"            return $.getJSON(this.urlBase + '/api/');");
                 sb.AppendLine();
 
-                sb.AppendLine($"        return $.postJSON(this.urlBase + '/api/');");
+                sb.AppendLine($"            return $.postJSON(this.urlBase + '/api/');");
 
-                sb.AppendLine("    };");
+                sb.AppendLine("        };");
             }
 
-            sb.Append("};");
+            sb.Append("    };");
             return sb.ToString();
         }
 
