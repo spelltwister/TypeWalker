@@ -97,6 +97,32 @@ namespace TypeWalker
                 runtime.Log("Loaded a a total of " + allTypes.Count + " types.");
 
                 var sb = new StringBuilder();
+
+                var exports = KnockoutGeneratorFactory.Create(allTypes);
+
+                foreach (var g in exports.Dtos)
+                {
+                    sb.AppendLine($"declare module {g.Key} {{");
+                    foreach (var d in g)
+                    {
+                        sb.AppendLine(d);
+                    }
+                    sb.AppendLine("}");
+                }
+
+                foreach (var g in exports.Controllers)
+                {
+                    sb.AppendLine($"declare module {g.Key} {{");
+                    foreach (var d in g)
+                    {
+                        sb.AppendLine(d);
+                    }
+                    sb.AppendLine("}");
+                }
+
+                result = sb.ToString();
+                return !loadFailed;
+
                 foreach (var generator in generators)
                 {
                     var thisResult = generator.Generate(allTypes);
